@@ -271,6 +271,6 @@ TODO: document the exact Ollama request shape and the prompt/output schema from 
 
 ## License & Acknowledgments
 
-- **Project code:** TODO: add license (none stated in the sources).
+- **Project code:** Released under the MIT License. See [LICENSE](LICENSE).
 - **Gemma 4:** released by Google in April 2026 and described as Apache 2.0 licensed in third-party sources (verify at `ai.google.dev/gemma` before publishing). Model card: `https://ai.google.dev/gemma/docs/core/model_card_4`.
 - Built with FastAPI, MongoDB, React/Vite, Flutter and Ollama.
