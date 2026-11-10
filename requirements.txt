@@ -1,0 +1,7 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+pydantic-settings>=2.3
+httpx>=0.27          # calls the Ollama server on the Mac
+pymongo>=4.9         # local MongoDB on the Windows hub
+qrcode>=7.4          # optional: prints a QR code of the server address
