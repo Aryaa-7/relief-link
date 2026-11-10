@@ -104,7 +104,6 @@ The Gemma model has no directory in the repo. Weights are pulled and served by O
 | Mac AI server | Ollama (version 0.22 or newer for Gemma 4; verify with `ollama --version`), `gemma4:e2b` pulled (about 7.2 GB download per the Ollama library); plugged in and kept awake during use |
 | Dev machine (app) | Flutter stable, Dart `>=3.0.0 <4.0.0`, Android device or emulator |
 | Flutter packages | `http`, `shared_preferences`, `uuid`, `geolocator` |
-| Mac RAM / GPU | TODO: not specified in the sources; measure on your Mac |
 | Network | Shared Wi-Fi/router (no uplink needed) or a Windows hotspot; client isolation must be off |
 
 ## Quickstart & Local Development Setup
@@ -255,8 +254,6 @@ Report payload:
 2. The worker picks up pending reports oldest first (checked every ~8 s) and sends them over HTTP to Ollama at `OLLAMA_BASE_URL` using `OLLAMA_MODEL` (`gemma4:e2b`).
 3. The response is validated as JSON. Unusable JSON twice, or 3 timeouts, triggers the rule-based fallback; an unreachable server leaves the report pending.
 4. The triaged report (source `gemma` or fallback) appears on the next `GET /reports?since=` poll.
-
-TODO: document the exact Ollama request shape and the prompt/output schema from the code in `app/ai/*`.
 
 ## Known Limitations
 
