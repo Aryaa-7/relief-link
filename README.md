@@ -7,10 +7,9 @@ Offline-first disaster-response triage system: volunteers file free-text reports
 <!-- Badges: replace with real URLs -->
 [![License](https://img.shields.io/github/license/Aryaa-7/https://github.com/Aryaa-7/relief-link.git)](LICENSE)
 ![License](https://img.shields.io/badge/license-TODO-lightgrey)
-![Gemma 4](https://img.shields.io/badge/Gemma_4-E2B-blue)
-![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Node](https://img.shields.io/badge/node-LTS-green)
-![Flutter](https://img.shields.io/badge/flutter-stable-blue)
+[![Gemma 4](https://img.shields.io/badge/Gemma_4-E2B-blue)](https://ai.google.dev/gemma)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![Flutter](https://img.shields.io/badge/flutter-stable-blue)](https://flutter.dev)
 
 > **Status:** v0.2 is written but **not yet run or tested**. Nothing is claimed to work until you complete the checklist in the hub guide.
 
