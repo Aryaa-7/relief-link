@@ -1,122 +1,276 @@
-# ReliefLink — two-laptop offline setup (v0.2)
+# ReliefLink
 
-```
+Offline-first disaster-response triage system: volunteers file free-text reports (any language) from an Android app, a local hub stores them, and Gemma 4 E2B served by Ollama triages them into severity, category, needs and suggested action for coordinators on a React dashboard. Everything runs on a local network with no internet connection required.
+
+> **Decision support only.** AI triage output is a suggestion for human coordinators, not a verified emergency dispatch decision.
+
+<!-- Badges: replace with real URLs -->
+[![License](https://img.shields.io/github/license/Aryaa-7/https://github.com/Aryaa-7/relief-link.git)](LICENSE)
+![License](https://img.shields.io/badge/license-TODO-lightgrey)
+![Gemma 4](https://img.shields.io/badge/Gemma_4-E2B-blue)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![Node](https://img.shields.io/badge/node-LTS-green)
+![Flutter](https://img.shields.io/badge/flutter-stable-blue)
+
+> **Status:** v0.2 is written but **not yet run or tested**. Nothing is claimed to work until you complete the checklist in the hub guide.
+
+## System Architecture Overview
+
+```text
  Volunteer phones (Flutter) ──┐
-                              ├── Wi-Fi (no internet needed) ──► WINDOWS HUB
- Admin browser (React) ───────┘                                  FastAPI :8000  + MongoDB (localhost)
-                                                                       │  HTTP
-                                                                       ▼
-                                                                  MAC AI SERVER
-                                                                  Ollama :11434 + Gemma
+                              ├── Wi-Fi / hotspot (no internet needed) ──► WINDOWS HUB
+ Admin browser (React) ───────┘                                           FastAPI :8000 + MongoDB (localhost)
+                                                                                │ HTTP
+                                                                                ▼
+                                                                           MAC AI SERVER
+                                                                           Ollama :11434 + gemma4:e2b
 ```
-API contract for the Flutter app is **unchanged** (`/api/v1/...`, `X-Admin-Pin`, `updated_at`, `?since=`).
 
-## STATUS — read this first
-Written but **NOT yet run or tested** (the build environment had no Python packages, no MongoDB,
-no Ollama, no npm registry and no internet). Nothing below is claimed to work until you tick it off in
-section 6. Please paste any error you hit and it will be fixed.
+- Phones and the dashboard talk **only to the hub**. The app never talks to the AI server directly.
+- The hub talks to the Mac over HTTP. The Mac IP is only configured on the hub.
+- The hub serves the built dashboard (`dashboard/dist`) at `/admin/`.
 
----
-## 1. Mac (AI server), one-time
-1. Install Ollama, then pull your model and note the **exact tag**: `ollama pull <model>` and `ollama list`.
-2. Make Ollama listen on the network (default is localhost only):
-   - Ollama menu-bar app: `launchctl setenv OLLAMA_HOST "0.0.0.0:11434"`, then quit and reopen Ollama.
-   - or in Terminal: `OLLAMA_HOST=0.0.0.0:11434 ollama serve`
-3. If macOS asks to allow incoming connections for Ollama, click **Allow**.
-4. Keep the Mac awake during the demo: `caffeinate -d` (leave the terminal open) and keep it plugged in.
-5. Find the Mac's IP: `ipconfig getifaddr en0` (Wi-Fi). You need it in section 3.
-   (Ollama then accepts requests from any device on the Wi-Fi. Fine for a demo; don't leave it open on public Wi-Fi.)
+## Core Features
 
-## 2. Windows (hub), one-time
-1. Install **Python 3.11+**, **MongoDB Community Server** (choose "run as a Service"; it listens on localhost only),
-   and **Node.js LTS** (only needed to *build* the dashboard).
-2. In this folder (PowerShell):
-   ```
-   python -m venv .venv
-   .venv\Scripts\activate
-   pip install -r requirements.txt
-   copy .env.example .env        # then edit .env: admin PIN, OLLAMA_BASE_URL, OLLAMA_MODEL
-   cd dashboard
-   npm install
-   npm run build                 # creates dashboard\dist  (needs internet ONCE, for npm)
-   cd ..
-   ```
-   No internet on the Windows laptop? Run the two npm commands on any other computer and copy the
-   resulting `dashboard\dist` folder over. After that, no Node or internet is needed at all.
-3. Allow phones and the dashboard in through the Windows firewall (PowerShell **as Administrator**):
-   ```
-   New-NetFirewallRule -DisplayName "ReliefLink 8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow -Profile Any
-   ```
-4. Start: `python run.py`. The console prints the hub address(es), the dashboard URL and the AI server it will use.
+### Frontend Capabilities
 
-## 3. Pointing the hub at the Mac (never hard-coded)
-Edit `.env`:
+**Flutter volunteer app (Android)**
+- Free-text emergency reports in Hindi, Hinglish, English or other languages, with an optional language hint.
+- Flexible location: none, phone GPS, a known place from the hub (hospital, shelter, camp), or manual latitude/longitude (range-checked).
+- Offline queue: reports are saved on the phone first and sent when the hub is reachable.
+- Idempotent sync via app-generated UUIDs, so retries never create duplicates.
+- Live results: severity, category, people affected, needs, English summary, suggested action and coordinator-set case status.
+- Resources: list and register. Places: list hospitals, shelters and camps.
+- Runtime hub-address settings with a connection test.
+
+**React admin dashboard (Vite)**
+- Shows reports with triage results and a "Waiting for AI server" pending counter.
+- AI server status (online / offline / model_missing) and an *AI server settings* panel to change the Ollama URL and model without restarting.
+- Case status changes, protected by the admin PIN.
+- Serves all assets from the hub's own address (no CDN or font hosts).
+
+### Backend / API Engine
+- FastAPI hub with MongoDB storage (localhost only).
+- Idempotent report ingestion; the same report id returns 200 with no second row.
+- Incremental sync with `?since=` and `updated_at`; `server_time` is read before the query so polling cannot miss an update.
+- Background AI worker (`app/worker.py`) that processes pending reports oldest first, checking every ~8 s.
+- Admin actions gated by the `X-Admin-Pin` header.
+
+### Gemma 4 Intelligence / Inference Integration
+- **Gemma 4 E2B** (`gemma4:e2b`) served by Ollama on a separate machine, reached by the hub over HTTP.
+- Modules in `app/ai/*`: Ollama client, prompt, validation, fallback.
+- Reports are always accepted and stored with status `processing`. If the AI server is unreachable they stay pending and are triaged automatically when it returns.
+- Rule-based fallback is used only if Gemma returns unusable JSON twice, or times out 3 times for the same report.
+- The model can be swapped (for example to `gemma4:e4b`) by changing `OLLAMA_MODEL`, with no code change.
+
+## Repository Structure
+
+Root folder names below are placeholders; adjust to your repo. Hub paths come from the hub guide.
+
+```text
+.
+├── hub/                          # TODO: confirm folder name
+│   ├── app/
+│   │   ├── ai/                   # Ollama client, prompt, validation, fallback
+│   │   ├── worker.py             # AI worker
+│   │   └── runtime.py
+│   ├── dashboard/                # React/Vite dashboard (dashboard/dist is built output)
+│   ├── scripts/
+│   │   └── send_test_report.py
+│   ├── main.py                   # starts the AI worker, serves dashboard/dist
+│   ├── run.py                    # starts the hub
+│   ├── requirements.txt
+│   └── .env.example
+└── volunteer_app/                # TODO: confirm folder name (Flutter)
+    ├── lib/
+    │   ├── main.dart
+    │   ├── models.dart
+    │   ├── api.dart
+    │   ├── state.dart
+    │   └── screens/
+    │       ├── home_screen.dart
+    │       ├── report_screen.dart
+    │       ├── reports_screen.dart
+    │       ├── resources_screen.dart
+    │       ├── places_screen.dart
+    │       └── settings_screen.dart
+    └── android/app/src/main/AndroidManifest.xml
 ```
-OLLAMA_BASE_URL=http://<MAC_IP>:11434
-OLLAMA_MODEL=<exact tag from ollama list>
-```
-**Mac IP changed (new network)?** No restart needed: open `http://localhost:8000/admin/` → *AI server settings*
-→ enter the new URL (and model) → *Save & test*. It is saved in MongoDB and shown as online/offline/model_missing.
 
-Test the link from Windows before anything else: `curl.exe http://<MAC_IP>:11434/api/tags` should list your model.
+The Gemma model has no directory in the repo. Weights are pulled and served by Ollama on the Mac.
 
-## 4. The two network setups (both need NO internet)
-**A. Windows hotspot.** Settings → Network → Mobile hotspot → on. Connect the Mac and phones to it.
-Windows is usually `192.168.137.1` (check with `ipconfig`); get the Mac's IP with `ipconfig getifaddr en0`.
-Known risk: Windows may refuse to start the hotspot when it has *no* network connection at all. If so, connect
-the laptop to any Wi-Fi first, or use setup B. Test this early.
+## Prerequisites & Dependencies
 
-**B. Shared Wi-Fi.** Windows, Mac and phones join the same Wi-Fi/router (a router with no internet uplink is fine).
-Some public/college Wi-Fi blocks devices from talking to each other ("client isolation"), so it will not work there.
-Use your own router or a phone hotspot.
-
-Phones/Flutter always use `http://<WINDOWS_IP>:8000` (the printed address / QR code). The Mac IP is only for the hub.
-
-## 5. How the AI behaves when the Mac is away
-Reports are always accepted and stored (status `processing`). If the Mac or Ollama is unreachable, they simply
-stay pending (dashboard: "Waiting for AI server", counter in header) and are processed automatically, oldest first,
-as soon as the Mac is back (checked every ~8 s). Rule-based fallback is used only if Gemma answered with unusable
-JSON twice, or timed out 3 times for the same report.
-
-## 6. TEST CHECKLIST (tick only what you actually saw)
-Do 6a and 6b with internet ON first (to separate bugs from network issues), then repeat 6c with it OFF.
-
-**6a. Hub alone**
-- [ ] `python run.py` starts, no "MongoDB not reachable" error.
-- [ ] `http://localhost:8000/docs` opens; `GET /api/v1/health` shows `mongo: ok`.
-- [ ] `http://localhost:8000/admin/` shows the React dashboard (not the "not built" message).
-- [ ] `python scripts/send_test_report.py` → appears on dashboard within ~3 s as pending.
-- [ ] Re-sending the same report id returns 200 and no second row appears (idempotency).
-- [ ] Changing the Case dropdown asks for the PIN, works, wrong PIN is rejected.
-
-**6b. Mac link**
-- [ ] `curl.exe http://<MAC_IP>:11434/api/tags` works from Windows.
-- [ ] Dashboard header shows "AI server online"; the pending report becomes triaged with source `gemma`.
-- [ ] Stop Ollama on the Mac → send 2 reports → they stay "Waiting for AI server" → start Ollama → both triage by themselves.
-- [ ] Change the Mac URL in *AI server settings* to a wrong one and back; status updates each time.
-- [ ] Send 10 messy mixed-language reports; check severity/category look sensible.
-
-**6c. Offline proof (internet actually disconnected)**
-- [ ] Disconnect every internet source (unplug router uplink / turn off mobile data / hotspot with no uplink).
-- [ ] On Windows: `ping 8.8.8.8` fails and a website will not load, so you know it is truly offline.
-- [ ] Setup A: Mac + phone join the Windows hotspot. Repeat the 6a + 6b checks.
-- [ ] Setup B: all three on the same offline router. Repeat the 6a + 6b checks.
-- [ ] Dashboard: browser DevTools → Network tab → reload: every request is to the hub's own address only
-      (no google/cdn/fonts hosts).
-- [ ] Flutter app: queue a report in airplane mode, reconnect to the hub Wi-Fi, report appears exactly once.
-
-## 7. Troubleshooting
-| Symptom | Likely cause |
+| Machine | Requirement |
 |---|---|
-| Dashboard shows "Dashboard not built yet" | run `npm run build` in `dashboard/`, restart |
-| Phones can't open the hub | Windows firewall rule missing, or wrong IP/Wi-Fi, or client isolation |
-| AI status `offline` | Mac IP wrong/changed, Ollama not bound to 0.0.0.0, Mac firewall/asleep |
-| AI status `model_missing` | `OLLAMA_MODEL` doesn't match `ollama list` exactly |
-| Health `mongo: down` | MongoDB service not running |
-| Reports stuck on "AI is processing…" | slow Mac; check Ollama on the Mac; after 3 timeouts the fallback is used |
+| Windows hub | Python 3.11+, MongoDB Community Server (as a Service), Node.js LTS (only to build the dashboard) |
+| Mac AI server | Ollama (version 0.22 or newer for Gemma 4; verify with `ollama --version`), `gemma4:e2b` pulled (about 7.2 GB download per the Ollama library); plugged in and kept awake during use |
+| Dev machine (app) | Flutter stable, Dart `>=3.0.0 <4.0.0`, Android device or emulator |
+| Flutter packages | `http`, `shared_preferences`, `uuid`, `geolocator` |
+| Mac RAM / GPU | TODO: not specified in the sources; measure on your Mac |
+| Network | Shared Wi-Fi/router (no uplink needed) or a Windows hotspot; client isolation must be off |
 
-## 8. What changed from v0.1
-Replaced: `store.py` (in-memory → MongoDB), `dashboard/` (HTML → React/Vite), `main.py` (starts AI worker, serves `dashboard/dist`).
-New: `app/ai/*` (Ollama client, prompt, validation, fallback), `app/worker.py`, `app/runtime.py`,
-`/api/v1/admin/ai-server` (GET/PUT, admin PIN). Routes only swapped their data calls; models and endpoints are unchanged
-except the additive AI-server models. One small fix: `server_time` is now read *before* the query so polling can't miss an update.
+## Quickstart & Local Development Setup
+
+### 1. Clone the repository
+
+```bash
+git clone <REPO_URL>
+cd <REPO_DIR>
+```
+
+### 2. Gemma 4 model setup (Mac)
+
+```bash
+ollama --version                 # needs a Gemma 4-capable release
+ollama pull gemma4:e2b
+ollama list                      # copy the exact tag shown
+```
+
+Make Ollama listen on the network (default is localhost only):
+
+```bash
+# Ollama menu-bar app, then quit and reopen Ollama
+launchctl setenv OLLAMA_HOST "0.0.0.0:11434"
+
+# or run in Terminal
+OLLAMA_HOST=0.0.0.0:11434 ollama serve
+```
+
+```bash
+caffeinate -d                    # keep the Mac awake; leave the terminal open
+ipconfig getifaddr en0           # the Mac's Wi-Fi IP
+```
+
+Allow incoming connections for Ollama if macOS asks. Ollama then accepts requests from any device on the network, so do not leave it open on public Wi-Fi.
+
+### 3. Backend configuration (Windows hub)
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env
+```
+
+Edit `.env`:
+
+```bash
+OLLAMA_BASE_URL=http://<MAC_IP>:11434
+OLLAMA_MODEL=gemma4:e2b          # must match `ollama list` exactly
+# plus the admin PIN variable defined in .env.example
+```
+
+Open the firewall for phones and the dashboard (PowerShell **as Administrator**):
+
+```powershell
+New-NetFirewallRule -DisplayName "ReliefLink 8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow -Profile Any
+```
+
+Verify the Mac link from Windows (the output should list `gemma4:e2b`):
+
+```powershell
+curl.exe http://<MAC_IP>:11434/api/tags
+```
+
+### 4. Frontend initialization
+
+**Dashboard** (needs internet once, for npm):
+
+```powershell
+cd dashboard
+npm install
+npm run build                    # creates dashboard\dist
+cd ..
+```
+
+If the hub has no internet, run these two npm commands on another computer and copy `dashboard\dist` over.
+
+**Flutter app:**
+
+```bash
+flutter pub get
+flutter run                      # or: flutter build apk
+```
+
+### 5. Run the combined stack
+
+```powershell
+python run.py
+```
+
+The console prints the hub address, the dashboard URL and the AI server in use. Then:
+
+1. Open `http://localhost:8000/docs` and `http://localhost:8000/admin/`.
+2. On the phone, confirm `http://<HUB_IP>:8000/docs` opens in the browser (phone on the same Wi-Fi, mobile data off).
+3. In the app, tap the gear icon, enter `http://<HUB_IP>:8000`, and tap **Save & test**. You should see a green **Hub online** chip.
+4. Send a test report: `python scripts/send_test_report.py`
+5. Confirm the dashboard header shows "AI server online" and the report is triaged with source `gemma`.
+
+Use the Windows laptop's IP for phones, not the Mac's and not `localhost`. On a Windows hotspot it is usually `192.168.137.1`. For an emulator on the same machine as the hub, use `http://10.0.2.2:8000`.
+
+If the Mac IP or model tag changes, open `http://localhost:8000/admin/` → *AI server settings*, enter the new URL and model, and click *Save & test*. No restart is needed. Status shows as online, offline or `model_missing`.
+
+## Environment Variables Reference
+
+| Variable / setting | Default | Service | Purpose |
+|---|---|---|---|
+| `OLLAMA_BASE_URL` | none (set in `.env`) | Backend | Address of the Ollama server, `http://<MAC_IP>:11434` |
+| `OLLAMA_MODEL` | none (set in `.env`); `gemma4:e2b` for this project | Backend | Exact model tag from `ollama list` |
+| Admin PIN | TODO: variable name not in sources | Backend | Sent by clients as `X-Admin-Pin` |
+| `OLLAMA_HOST` | `127.0.0.1:11434` (localhost only); set to `0.0.0.0:11434` | Model (Mac) | Makes Ollama listen on the network |
+| Hub URL (in-app setting) | `http://192.168.137.1:8000` | Frontend (Flutter) | Hub address, saved on the device |
+| Sync interval (`lib/state.dart`) | 6 seconds | Frontend (Flutter) | `Timer.periodic` sync loop |
+| Request timeout (`_timeout` in `lib/api.dart`) | 8 seconds | Frontend (Flutter) | HTTP timeout |
+
+The AI server URL and model can also be changed at runtime from the dashboard; the saved values are stored in MongoDB.
+
+## API & Model Interface Brief
+
+Base path: `/api/v1`. JSON is snake_case, timestamps are ISO-8601 UTC, errors look like `{"error": {"code": "...", "message": "..."}}`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/health` | Hub, MongoDB and AI status |
+| POST | `/reports/batch` | Offline sync of queued reports (up to 100 per call) |
+| GET | `/reports?since=` | Poll for new or updated reports |
+| GET | `/resources` | List resources |
+| POST | `/resources` | Add a resource (idempotent on `id`) |
+| GET | `/locations` | Known places (list shape assumed by the app) |
+| GET / PUT | `/admin/ai-server` | Read or set the Ollama URL and model (admin PIN) |
+
+Report payload:
+
+```json
+{
+  "id": "uuid-v4",
+  "raw_text": "3 log fasse hain, budhe ko insulin chahiye, road band hai",
+  "lang_hint": "hi",
+  "client_created_at": "2026-11-10T07:30:00Z",
+  "gps": { "lat": 20.2961, "lng": 85.8245 }
+}
+```
+
+`lang_hint` and `gps` are optional. A report's `status` is `processing` and `triage` is `null` until the AI worker finishes.
+
+**How reports reach Gemma 4:**
+1. `POST /reports/batch` stores each report in MongoDB as `processing`; duplicates by id are ignored.
+2. The worker picks up pending reports oldest first (checked every ~8 s) and sends them over HTTP to Ollama at `OLLAMA_BASE_URL` using `OLLAMA_MODEL` (`gemma4:e2b`).
+3. The response is validated as JSON. Unusable JSON twice, or 3 timeouts, triggers the rule-based fallback; an unreachable server leaves the report pending.
+4. The triaged report (source `gemma` or fallback) appears on the next `GET /reports?since=` poll.
+
+TODO: document the exact Ollama request shape and the prompt/output schema from the code in `app/ai/*`.
+
+## Known Limitations
+
+- Not covered by automated tests; verify manually using the hub's test checklist.
+- E2B is the smallest Gemma 4 size; check the `gemma` vs fallback ratio on messy mixed-language reports before relying on it, and switch `OLLAMA_MODEL` to `gemma4:e4b` if too many fall back.
+- No authentication for volunteers: anyone on the network can submit reports. Coordinator actions require the admin PIN on the dashboard.
+- Cleartext HTTP is enabled for local-network use only. Do not expose the hub to the internet.
+- No map view (tiles need internet). Resource creation is not queued offline.
+
+## License & Acknowledgments
+
+- **Project code:** TODO: add license (none stated in the sources).
+- **Gemma 4:** released by Google in April 2026 and described as Apache 2.0 licensed in third-party sources (verify at `ai.google.dev/gemma` before publishing). Model card: `https://ai.google.dev/gemma/docs/core/model_card_4`.
+- Built with FastAPI, MongoDB, React/Vite, Flutter and Ollama.
