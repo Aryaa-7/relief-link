@@ -5,8 +5,6 @@ Offline-first disaster-response triage system: volunteers file free-text reports
 > **Decision support only.** AI triage output is a suggestion for human coordinators, not a verified emergency dispatch decision.
 
 <!-- Badges: replace with real URLs -->
-[![License](https://img.shields.io/github/license/Aryaa-7/https://github.com/Aryaa-7/relief-link.git)](LICENSE)
-![License](https://img.shields.io/badge/license-TODO-lightgrey)
 [![Gemma 4](https://img.shields.io/badge/Gemma_4-E2B-blue)](https://ai.google.dev/gemma)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![Flutter](https://img.shields.io/badge/flutter-stable-blue)](https://flutter.dev)
